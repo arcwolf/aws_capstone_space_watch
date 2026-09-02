@@ -1,0 +1,1210 @@
+<!doctype html>
+<html lang="ko" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Space Watch — 우주개발 시황</title>
+<style>
+/* ===========================================================================
+   색 토큰
+   - 범주형 slot 1(파랑)=상업, slot 2(주황)=정부  — 고정 순서, 순환하지 않음
+   - 범주형 slot 3(청록)=ISS, slot 4(노랑)=CSS   — 라이트 모드 대비가 3:1 미만이라
+     relief 규칙에 따라 궤도 옆에 이름·수치를 항상 직접 라벨로 표시한다
+   - 도달등급은 순서형 단일 색상 램프(파랑). 다크는 라이트의 반전이 아니라
+     다크 표면에 맞춰 따로 고른 단계다.
+   - 상태색(성공/실패)은 예약색이며 항상 기호 + 글자와 함께 쓴다.
+   모든 팔레트는 scripts/validate_palette.js 로 두 모드 검증을 통과했다.
+   =========================================================================== */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --surface: #fcfcfb;  --plane: #f9f9f7;
+  --ink-1: #0b0b0b;    --ink-2: #52514e;   --ink-3: #898781;
+  --grid: #e1e0d9;     --axis: #c3c2b7;    --border: rgba(11,11,11,.10);
+  --s1: #2a78d6;  --s2: #eb6834;  --s3: #1baf7a;  --s4: #eda100;
+  --t0: #86b6ef; --t1: #5598e7; --t2: #2a78d6; --t3: #1c5cab; --t4: #0d366b;
+  --good: #0ca30c; --warning: #b07600; --critical: #d03b3b;
+  --sun: #d98a00;
+  --wash: rgba(11,11,11,.04);
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface: #12141c;  --plane: #0a0b10;
+  --ink-1: #ffffff;    --ink-2: #c3c2b7;   --ink-3: #898781;
+  --grid: #23252e;     --axis: #383a44;    --border: rgba(255,255,255,.10);
+  --s1: #3987e5;  --s2: #d95926;  --s3: #199e70;  --s4: #c98500;
+  --t0: #184f95; --t1: #256abf; --t2: #3987e5; --t3: #6da7ec; --t4: #b7d3f6;
+  --good: #0ca30c; --warning: #fab219; --critical: #d03b3b;
+  --sun: #f5b731;
+  --wash: rgba(255,255,255,.05);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--plane);
+  color: var(--ink-1);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 1120px; margin: 0 auto; padding: 20px 16px 64px; }
+
+/* --- 헤더 --------------------------------------------------------------- */
+header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+h1 { font-size: 20px; font-weight: 650; margin: 0; letter-spacing: -.01em; }
+.tagline { color: var(--ink-3); font-size: 13px; }
+.spacer { flex: 1; }
+button {
+  font: inherit; color: var(--ink-1); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; cursor: pointer;
+}
+button:hover { background: var(--wash); }
+button[aria-pressed="true"] { border-color: var(--s1); color: var(--s1); }
+
+/* --- 패널 --------------------------------------------------------------- */
+.panel {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 16px; margin-bottom: 14px;
+}
+.panel > h2 {
+  font-size: 13px; font-weight: 650; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--ink-2); margin: 0 0 4px;
+}
+.panel > .sub { color: var(--ink-3); font-size: 12px; margin: 0 0 14px; }
+.cols { display: grid; grid-template-columns: 360px 1fr; gap: 14px; align-items: start; }
+@media (max-width: 860px) { .cols { grid-template-columns: 1fr; } }
+.solar-grid { display: grid; grid-template-columns: 250px 1fr; gap: 20px; align-items: start; }
+@media (max-width: 860px) { .solar-grid { grid-template-columns: 1fr; } }
+
+/* --- 도달 요약: 등급별로 묶은 천체 목록 (그림 없이도 읽히는 대체 경로) --- */
+.reach-group { display: flex; gap: 8px; align-items: baseline; margin-top: 9px; font-size: 12px; }
+.reach-group .sw { width: 10px; height: 10px; border-radius: 3px; flex: none; margin-top: 4px; }
+.reach-group .tl { color: var(--ink-3); font-size: 11px; white-space: nowrap; }
+.reach-group .bl { color: var(--ink-1); }
+.reach-head { font-size: 11px; color: var(--ink-3); margin-top: 14px; letter-spacing: .04em; }
+
+/* --- 태양계 재생 컨트롤 -------------------------------------------------- */
+.solar-controls {
+  padding: 10px 12px; margin-bottom: 12px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--plane);
+  /* 태양계 도표가 700px 넘게 높아서 스크롤하면 컨트롤이 사라진다 */
+  position: sticky; top: 8px; z-index: 5;
+}
+.solar-controls input[type=range] { width: 200px; }
+.solar-controls #solar-offset { font-variant-numeric: tabular-nums; min-width: 52px; display: inline-block; }
+.solar-date { color: var(--ink-1); font-variant-numeric: tabular-nums; }
+select {
+  font: inherit; color: var(--ink-1); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px;
+}
+#solar-note { white-space: pre-line; }
+.sc-num { fill: var(--surface); font-size: 9px; font-weight: 700; }
+.sc-badge {
+  display: inline-block; min-width: 14px; height: 14px; line-height: 14px;
+  text-align: center; border-radius: 4px; background: var(--s2);
+  color: var(--surface); font-size: 9px; font-weight: 700; margin-right: 5px;
+}
+
+/* --- 통계 타일 (차트가 아니다 — 헤드라인 숫자) ------------------------- */
+.tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 14px; }
+@media (max-width: 860px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
+.tile {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 12px 14px;
+}
+.tile .k { color: var(--ink-3); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
+.tile .v { font-size: 26px; font-weight: 640; line-height: 1.15; margin-top: 4px; letter-spacing: -.02em; }
+.tile .u { font-size: 13px; font-weight: 500; color: var(--ink-2); margin-left: 2px; }
+.tile .n { color: var(--ink-3); font-size: 11px; margin-top: 2px; }
+
+/* --- 범례 --------------------------------------------------------------- */
+.legend { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; font-size: 12px; color: var(--ink-2); }
+.legend .item { display: inline-flex; align-items: center; gap: 6px; }
+.swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.ramp { display: inline-flex; align-items: center; gap: 0; }
+.ramp .step { width: 22px; height: 10px; }
+.ramp .step:first-child { border-radius: 3px 0 0 3px; }
+.ramp .step:last-child { border-radius: 0 3px 3px 0; }
+
+/* --- 막대 차트 ---------------------------------------------------------- */
+.bars { display: flex; flex-direction: column; gap: 2px; } /* 인접 막대 사이 2px 표면 간격 */
+.bar-row { display: grid; grid-template-columns: 176px 1fr 74px; gap: 10px; align-items: center; }
+.bar-pct { color: var(--ink-3); font-size: 11px; margin-left: 5px; }
+.bar-name { color: var(--ink-2); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-track { height: 20px; background: var(--wash); border-radius: 0 4px 4px 0; position: relative; }
+.bar-fill { height: 100%; border-radius: 0 4px 4px 0; min-width: 3px; } /* 데이터 끝만 4px 라운드, 기준선에 고정 */
+.bar-val { font-size: 12px; color: var(--ink-1); font-variant-numeric: tabular-nums; text-align: right; }
+
+/* --- 표 ---------------------------------------------------------------- */
+.tbl-scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+th {
+  text-align: left; font-weight: 600; color: var(--ink-3); font-size: 11px;
+  text-transform: uppercase; letter-spacing: .04em;
+  padding: 6px 10px 6px 0; border-bottom: 1px solid var(--axis); white-space: nowrap;
+}
+td { padding: 7px 10px 7px 0; border-bottom: 1px solid var(--grid); vertical-align: top; }
+td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+tbody tr:hover { background: var(--wash); }
+.dim { color: var(--ink-3); }
+.chip {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 11px;
+  padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border); white-space: nowrap;
+}
+/* 상태는 색 단독으로 의미를 나르지 않는다 — 기호 + 글자를 함께 쓴다 */
+.chip.good { color: var(--good); border-color: color-mix(in srgb, var(--good) 40%, transparent); }
+.chip.bad  { color: var(--critical); border-color: color-mix(in srgb, var(--critical) 40%, transparent); }
+.chip.soon { color: var(--ink-2); }
+
+/* --- 수집 상태 알약 — 상태색은 예약색이고 항상 기호 + 글자를 함께 쓴다 ----- */
+.pill {
+  font-size: 11.5px; padding: 3px 9px; border-radius: 999px; white-space: nowrap;
+  border: 1px solid var(--border); color: var(--ink-2); cursor: default;
+}
+.pill.ok   { color: var(--good);     border-color: color-mix(in srgb, var(--good) 40%, transparent); }
+.pill.warn { color: var(--warning);  border-color: color-mix(in srgb, var(--warning) 45%, transparent); }
+.pill.bad  { color: var(--critical); border-color: color-mix(in srgb, var(--critical) 45%, transparent); }
+
+/* 스크린리더 전용 */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* --- 컨트롤 ------------------------------------------------------------- */
+.controls { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+.controls label { font-size: 12px; color: var(--ink-2); display: inline-flex; align-items: center; gap: 8px; }
+input[type=range] { width: 170px; accent-color: var(--s1); }
+input[type=checkbox] { accent-color: var(--s1); width: 15px; height: 15px; }
+
+/* --- SVG 공통 ----------------------------------------------------------- */
+svg { display: block; width: 100%; height: auto; overflow: visible; }
+.orbit { fill: none; stroke: var(--grid); stroke-width: 1; }        /* 궤도는 그리드 성격 — 물러나 있어야 한다 */
+.orbit.dwarf { stroke: var(--axis); stroke-dasharray: 3 4; }
+.mark { stroke: var(--surface); stroke-width: 2; }                  /* 겹치는 마크에 2px 표면 링 */
+/* 라벨은 궤도선·항적선 위에 놓이므로 표면색 후광을 둘러 가독성을 지킨다.
+   paint-order: stroke 가 획을 글자 뒤로 보내 글자 모양을 깎지 않는다. */
+.lbl, .lbl-sm {
+  paint-order: stroke; stroke: var(--surface); stroke-width: 3px;
+  stroke-linejoin: round; stroke-linecap: round;
+}
+.lbl { fill: var(--ink-2); font-size: 11px; }
+.lbl-sm { fill: var(--ink-3); font-size: 10px; }
+.hit { fill: transparent; cursor: pointer; }                        /* 마크보다 큰 히트 타깃 */
+
+/* --- 툴팁 -------------------------------------------------------------- */
+#tip {
+  position: fixed; z-index: 50; pointer-events: none; opacity: 0;
+  transition: opacity .1s; max-width: 300px;
+  background: var(--surface); color: var(--ink-1);
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
+  box-shadow: 0 6px 24px rgba(0,0,0,.28); font-size: 12px; line-height: 1.45;
+}
+#tip .t { font-weight: 640; margin-bottom: 3px; }
+#tip .r { color: var(--ink-2); }
+#tip .m { color: var(--ink-3); font-size: 11px; margin-top: 4px; }
+
+/* --- 브리핑 ------------------------------------------------------------ */
+#brief-text { white-space: pre-wrap; line-height: 1.75; color: var(--ink-1); margin: 0; }
+.note { color: var(--ink-3); font-size: 11px; line-height: 1.6; margin-top: 10px; }
+.err { color: var(--critical); font-size: 12.5px; }
+.loading { color: var(--ink-3); font-size: 12.5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Space Watch</h1>
+  <span class="tagline">전 세계 우주개발 시황 — 태양계 도달 현황 · 지구 저궤도 · 발사 시장</span>
+  <span class="spacer"></span>
+  <span id="status-pill" class="pill" role="status" aria-live="polite"></span>
+  <button id="theme-btn" type="button" title="테마 전환">라이트 모드</button>
+</header>
+
+<!-- 통계 타일: 차트가 아니라 헤드라인 숫자 -->
+<div class="tiles" id="tiles"></div>
+
+<!-- 태양계 -->
+<section class="panel">
+  <h2>태양계 — 인류는 어디까지 갔는가</h2>
+  <p class="sub" id="solar-sub">불러오는 중…</p>
+  <div id="solar-legend" class="legend" style="margin-bottom:12px"></div>
+  <div class="controls solar-controls">
+    <button id="play-btn" type="button" aria-pressed="false">▶ 재생</button>
+    <label>배속 <select id="rate-sel"></select></label>
+    <label>시점
+      <input type="range" id="scrub" step="1" value="0">
+      <strong id="solar-offset">현재</strong>
+    </label>
+    <strong id="solar-date" class="solar-date"></strong>
+    <button id="reset-btn" type="button">지금</button>
+  </div>
+  <div class="solar-grid">
+    <div>
+      <svg id="solar-inset" viewBox="0 0 240 250" role="img" aria-label="내행성계 확대도"></svg>
+      <div id="reach-summary"></div>
+    </div>
+    <svg id="solar" viewBox="0 0 900 770" role="img" aria-label="태양계 상단 투영도와 천체별 인류 도달 등급"></svg>
+  </div>
+  <p class="note" id="solar-note"></p>
+</section>
+
+<div class="cols">
+  <!-- 지구 저궤도 -->
+  <section class="panel" style="margin:0">
+    <h2>지구 저궤도</h2>
+    <p class="sub" id="leo-sub">불러오는 중…</p>
+    <svg id="leo" viewBox="0 0 340 300" role="img" aria-label="활성 우주정거장의 궤도 측면도"></svg>
+    <div id="leo-readout"></div>
+    <p class="note" id="leo-note"></p>
+  </section>
+
+  <!-- 발사사 점유율 -->
+  <section class="panel" style="margin:0">
+    <h2>발사 시장 점유율</h2>
+    <p class="sub" id="chart-sub">불러오는 중…</p>
+    <div class="legend" style="margin-bottom:12px">
+      <span class="item"><span class="swatch" style="background:var(--s1)"></span>상업</span>
+      <span class="item"><span class="swatch" style="background:var(--s2)"></span>정부</span>
+    </div>
+    <div class="bars" id="bars"></div>
+  </section>
+</div>
+
+<!-- 발사 목록 (표 보기 = 접근성 대체 경로) -->
+<section class="panel">
+  <h2>발사 기록</h2>
+  <p class="sub" id="table-sub">불러오는 중…</p>
+  <div class="controls">
+    <label>기간
+      <input type="range" id="days" min="30" max="110" step="10" value="90">
+      <strong id="days-out" style="font-variant-numeric:tabular-nums">90일</strong>
+    </label>
+    <label><input type="checkbox" id="commercial"> 상업 발사만</label>
+  </div>
+  <div class="tbl-scroll"><table id="tbl">
+    <caption class="sr-only">최근 및 예정 궤도 발사 목록. 시각은 한국 표준시.</caption>
+    <thead><tr>
+      <th>발사 시각 (KST)</th><th>로켓</th><th>발사사</th><th>미션</th>
+      <th>궤도</th><th>발사장</th><th>상태</th>
+    </tr></thead>
+    <tbody></tbody>
+  </table></div>
+</section>
+
+<!-- 브리핑 -->
+<section class="panel">
+  <h2>AI 브리핑</h2>
+  <p class="sub">최근 시황을 한국어로 요약합니다. 같은 10분 동안은 캐시된 결과를 재사용합니다.</p>
+  <button id="brief-btn" type="button">브리핑 생성</button>
+  <div id="brief-box" style="margin-top:14px"><p class="loading">아직 생성하지 않았습니다.</p></div>
+</section>
+
+<p class="note" id="footer-note"></p>
+</div>
+
+<div id="tip" role="tooltip"></div>
+
+<script>
+"use strict";
+// ===========================================================================
+// 상태
+// ===========================================================================
+const S = { solar: null, launches: null, leo: null, health: null, days: 90, commercial: false };
+// 폴링 실패를 삼키지 않는다. "실시간 모니터"가 굳은 데이터를 아무 표시 없이
+// 보여주는 것이 이 앱에서 가장 나쁜 실패 양상이다.
+const POLL = { fails: 0, lastError: "" };
+let CONTROLS_READY = false;
+const $ = (id) => document.getElementById(id);
+const fmt = (n, d = 0) => Number(n).toLocaleString("ko-KR", { minimumFractionDigits: d, maximumFractionDigits: d });
+
+const KST = { timeZone: "Asia/Seoul", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false };
+const kst = (ms) => (ms ? new Date(ms).toLocaleString("ko-KR", KST) : "—");
+const kstFull = (ms) =>
+  ms ? new Date(ms).toLocaleString("ko-KR", { timeZone: "Asia/Seoul", dateStyle: "medium", timeStyle: "short" }) : "—";
+
+// ===========================================================================
+// 테마 — localStorage 에 저장하고 OS 설정보다 우선한다
+// ===========================================================================
+function applyTheme(mode, persist = true) {
+  document.documentElement.setAttribute("data-theme", mode);
+  $("theme-btn").textContent = mode === "dark" ? "라이트 모드" : "다크 모드";
+  if (persist) localStorage.setItem("sw-theme", mode);
+  // SVG 는 색을 CSS 변수로 참조하므로 테마 전환에 재그리기가 필요 없다.
+  // LEO 만 계열색을 JS 상수로 넘기므로 다시 그린다.
+  if (S.leo) drawLeo();
+}
+(function initTheme() {
+  // 다크가 기본이다(우주를 보는 화면이므로). 사용자가 명시적으로 라이트를
+  // 고른 경우에만 localStorage 값이 이를 덮는다.
+  // ?theme=light|dark 는 저장하지 않는 일회성 오버라이드 — 스크린샷/공유용.
+  const forced = new URLSearchParams(location.search).get("theme");
+  if (forced === "light" || forced === "dark") applyTheme(forced, false);
+  else applyTheme(localStorage.getItem("sw-theme") || "dark");
+})();
+$("theme-btn").onclick = () =>
+  applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark");
+
+// ===========================================================================
+// 툴팁 — 마크 단위 호버. HTML/SVG 차트는 기본적으로 상호작용해야 한다.
+// ===========================================================================
+const tip = $("tip");
+function showTip(evt, html) {
+  tip.innerHTML = html;
+  tip.style.opacity = "1";
+  moveTip(evt);
+}
+function moveTip(evt) {
+  const pad = 14, r = tip.getBoundingClientRect();
+  let x = evt.clientX + pad, y = evt.clientY + pad;
+  if (x + r.width > window.innerWidth - 8) x = evt.clientX - r.width - pad;
+  if (y + r.height > window.innerHeight - 8) y = evt.clientY - r.height - pad;
+  tip.style.left = x + "px";
+  tip.style.top = y + "px";
+}
+function hideTip() { tip.style.opacity = "0"; }
+/** 툴팁 내용을 요소에 얹는다. 리스너는 요소당 한 번만 붙인다.
+ *
+ *  이 함수는 애니메이션 루프 안에서 프레임마다 호출된다(내용에 실시간 수치가
+ *  들어가므로). 호출마다 addEventListener 를 하면 60fps 재생 1분에 약 97,000개의
+ *  리스너가 쌓인다(마커 9기 x 3개 x 3600프레임) — 실측으로 프레임당 27개였다.
+ *  그래서 내용은 매번 갈아끼우고 리스너는 최초 1회만 등록한다. */
+function bindTip(el, html) {
+  el.__tip = html;
+  if (el.__tipBound) return;
+  el.__tipBound = true;
+  el.addEventListener("mouseenter", (e) => showTip(e, el.__tip));
+  el.addEventListener("mousemove", moveTip);
+  el.addEventListener("mouseleave", hideTip);
+}
+
+const NS = "http://www.w3.org/2000/svg";
+function svgEl(tag, attrs) {
+  const el = document.createElementNS(NS, tag);
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
+  return el;
+}
+
+// ===========================================================================
+// 데이터
+// ===========================================================================
+const getJson = async (url) => {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`${url} → HTTP ${res.status}`);
+  return res.json();
+};
+
+async function load() {
+  const q = `days=${S.days}&commercial_only=${S.commercial}`;
+  let health, solar, launches, leo;
+  try {
+    [health, solar, launches, leo] = await Promise.all([
+      getJson("/healthz"),
+      getJson("/api/solar-system"),
+      getJson(`/api/launches?${q}`),
+      getJson("/api/leo"),
+    ]);
+  } catch (err) {
+    POLL.fails += 1;
+    POLL.lastError = String(err);
+    renderStatus();
+    throw err;
+  }
+  POLL.fails = 0; POLL.lastError = "";
+  S.health = health;
+  S.launches = launches; S.leo = leo;
+  // 재생 중에는 태양계 스냅샷을 갈아치우지 않는다. SVG 를 재구축하면 애니메이션이
+  // 깜빡이고, reg.data(구 위상)와 S.solar(신 epoch)가 섞여 시점이 어긋난다.
+  if (!TIME.playing || !REG.built) {
+    S.solar = solar;
+    buildSolar();
+    if (!CONTROLS_READY) { initSolarControls(); CONTROLS_READY = true; }
+    SUMMARY_LAST = -Infinity; updateSolar();   // 재구축 직후에는 요약을 즉시 채운다
+  }
+  drawTiles(); drawLeo(); drawBars(); drawTable(); drawFooter(); renderStatus();
+}
+
+/** 수집 상태를 헤더에 노출한다.
+ *
+ *  세 가지를 구분한다: 폴링 자체가 실패했는가 / 개별 소스가 실패했는가 /
+ *  성공했지만 데이터가 오래됐는가. 마지막 경우가 특히 중요한데, 서버는 200 을
+ *  내면서도 20분 주기 폴러가 죽어 있을 수 있다. */
+function renderStatus() {
+  const el = $("status-pill");
+  if (POLL.fails > 0) {
+    el.className = "pill bad";
+    el.textContent = `✕ 갱신 실패 ${POLL.fails}회 — 표시는 마지막 성공 시점`;
+    el.title = POLL.lastError;
+    return;
+  }
+  const h = S.health;
+  if (!h) { el.className = "pill"; el.textContent = ""; return; }
+
+  const detail = Object.entries(h.source_status || {}).map(([k, v]) => `${k}: ${v}`).join("\n");
+  el.title = `수집 사이클 ${h.cycles}회 · 발사 ${h.launches}건 · 정거장 ${h.stations}기\n${detail}` +
+             (h.last_error ? `\n오류: ${h.last_error}` : "");
+
+  const failed = Object.entries(h.source_status || {}).filter(([, v]) => v !== "ok" && v !== "cache");
+  const ageMin = h.last_collected_at ? (Date.now() / 1000 - h.last_collected_at) / 60 : null;
+
+  if (failed.length) {
+    el.className = "pill warn";
+    el.textContent = `▲ 소스 ${failed.length}개 실패: ${failed.map(([k]) => k).join(", ")}`;
+  } else if (ageMin === null) {
+    el.className = "pill warn";
+    el.textContent = "▲ 아직 수집되지 않음";
+  } else if (ageMin > 45) {
+    // 폴링 주기는 20분이다. 45분을 넘었으면 폴러가 멈춘 것이다.
+    el.className = "pill warn";
+    el.textContent = `▲ 수집 ${Math.round(ageMin)}분 전 — 주기(20분) 초과`;
+  } else {
+    el.className = "pill ok";
+    el.textContent = `● 수집 ${Math.round(ageMin)}분 전`;
+  }
+}
+
+// ===========================================================================
+// 통계 타일
+// ===========================================================================
+function drawTiles() {
+  const s = S.launches.summary, leo = S.leo;
+  const tiles = [
+    { k: `${s.window_days}일 발사`, v: fmt(s.count), u: "회", n: `${s.provider_count}개 주체` },
+    { k: "성공률", v: fmt(s.success_rate, 1), u: "%", n: `성공 ${s.success} · 실패 ${s.failure}` },
+    { k: "상업 비중", v: fmt(s.commercial_share, 1), u: "%", n: `상업 ${s.commercial_count} · 정부 ${s.government_count}` },
+    { k: `최다 발사사`, v: fmt(s.leader_share, 1), u: "%", n: s.leader },
+    { k: "활성 우주정거장", v: fmt(leo.station_active), u: `/ ${leo.station_total}`, n: "역대 대비" },
+  ];
+  $("tiles").innerHTML = tiles
+    .map((t) => `<div class="tile"><div class="k">${t.k}</div>
+      <div class="v">${t.v}<span class="u">${t.u}</span></div>
+      <div class="n">${esc(t.n)}</div></div>`)
+    .join("");
+}
+
+// ===========================================================================
+// 태양계 — 구축(1회) + 프레임 갱신(재생 중) 을 분리한다
+//
+// 매 프레임 SVG 를 전부 다시 만들면 60fps 를 낼 수 없다: 천체 9개 x 180점
+// 폴리라인 + 우주선 9기 = 프레임당 2000개 넘는 노드 생성이다. 그래서
+// 정적 기하(궤도, 항적선, 스케일 링, 범례)는 buildSolar() 에서 한 번만 만들고,
+// updateSolar() 는 이미 존재하는 요소의 좌표 속성만 고친다.
+// ===========================================================================
+const CX = 450, CY = 375;
+const R_INNER = 250;             // 0 ~ scale_break_au 구간의 화면 반경
+const R_OUTER = 355;             // scale_break_au ~ scale_outer_max_au 구간
+const TRAIL_STEPS = 18;          // 등시간 경로 180점 중 18점 = 궤도 주기의 10% 잔상
+const SC_COLOR = "var(--s2)";    // 인공물은 전부 한 색. 정체성은 직접 라벨이 나른다.
+
+let BREAK_AU = 40, OUTER_MAX_AU = 180;
+
+/** 구간 반경 스케일 — 40 AU 까지 세제곱근, 그 밖은 로그 압축.
+ *
+ *  보이저 1(약 170 AU)을 하나의 연속 스케일로 덮으면 명왕성이 반경 60% 지점으로
+ *  내려오고 내행성이 다시 한 점에 뭉친다. 그래서 축을 끊고, 대신 경계를 화면에
+ *  굵은 링 + 라벨로 명시하고 우주선마다 실제 AU 수치를 붙인다. */
+function radiusPx(rAu) {
+  const r = Math.max(0, rAu);
+  if (r <= BREAK_AU) return R_INNER * Math.cbrt(r / BREAK_AU);
+  const t = Math.log(r / BREAK_AU) / Math.log(OUTER_MAX_AU / BREAK_AU);
+  return R_INNER + Math.min(1, t) * (R_OUTER - R_INNER);
+}
+function proj(x, y) {
+  const r = Math.hypot(x, y) || 1e-9;
+  const rp = radiusPx(r);
+  return [CX + (rp * x) / r, CY - (rp * y) / r];
+}
+
+// 내행성계 확대 인셋 — 축을 끊는 대신 별도 뷰를 둔다(small multiple).
+const IN_CX = 120, IN_CY = 125, IN_R = 96, IN_MAX_AU = 1.7;
+const INNER_KEYS = new Set(["mercury", "venus", "earth", "mars"]);
+function projInner(x, y) {
+  const k = IN_R / IN_MAX_AU;  // 인셋은 선형 — 내행성만 다루므로 압축이 필요 없다
+  return [IN_CX + k * x, IN_CY - k * y];
+}
+
+const tierColor = (t) => `var(--t${Math.max(0, Math.min(4, t))})`;
+/** 실제 반지름 로그 스케일. 목성/지구는 11배지만 화면에서는 1.7배로 압축한다. */
+const bodyR = (km) => Math.max(3.2, Math.min(13, 3 + 4 * Math.log10(km / 1000)));
+
+// ---------------------------------------------------------------------------
+// 시간 상태
+// ---------------------------------------------------------------------------
+const DAY_MS = 86400000;
+const SCRUB_MAX = 18262;   // ±50년
+const RATES = [[1, "1일 / 초"], [30, "30일 / 초"], [365, "1년 / 초"], [1825, "5년 / 초"]];
+const TIME = { baseMs: Date.now(), offsetDays: 0, playing: false, rate: 30, raf: 0, last: 0 };
+const animMs = () => TIME.baseMs + TIME.offsetDays * DAY_MS;
+
+// 구축된 SVG 요소 레지스트리 — updateSolar() 가 좌표만 고칠 대상들
+// -Infinity 가 올바른 센티널이다. 0 으로 두면 performance.now()(페이지 로드 후
+// 경과 ms)의 원점과 결합돼, 로드 후 125ms 이내의 초기 렌더에서 조건이 거짓이 되고
+// 요약이 첫 폴링(60초)까지 빈 채로 남는다.
+let SUMMARY_LAST = -Infinity;
+const REG = { built: false, bodies: {}, escaping: {}, cruising: {}, moon: null, stationed: {}, inset: {} };
+
+// ---------------------------------------------------------------------------
+// 구축 (1회)
+// ---------------------------------------------------------------------------
+function buildSolar() {
+  const d = S.solar, svg = $("solar");
+  svg.textContent = "";
+  REG.bodies = {}; REG.escaping = {}; REG.cruising = {}; REG.stationed = {}; REG.moon = null;
+  BREAK_AU = d.scale_break_au;
+  OUTER_MAX_AU = d.scale_outer_max_au;
+  TIME.baseMs = d.epoch_ms;
+
+  // --- 태양 글로우 (좌표계 원점 강조) ---------------------------------
+  const defs = svgEl("defs", {});
+  const grad = svgEl("radialGradient", { id: "sunGlow" });
+  grad.appendChild(svgEl("stop", { offset: "0%", "stop-color": "var(--sun)", "stop-opacity": ".55" }));
+  grad.appendChild(svgEl("stop", { offset: "100%", "stop-color": "var(--sun)", "stop-opacity": "0" }));
+  defs.appendChild(grad);
+  svg.appendChild(defs);
+
+  // --- 스케일 구간 표시: 경계 밖 영역에 다른 배경 톤 --------------------
+  svg.appendChild(svgEl("circle", {
+    cx: CX, cy: CY, r: R_OUTER, fill: "var(--wash)", stroke: "none",
+  }));
+  svg.appendChild(svgEl("circle", {
+    cx: CX, cy: CY, r: R_INNER, fill: "var(--surface)", stroke: "none",
+  }));
+  // 경계 링 — 축을 끊었다는 사실을 눈에 보이게 한다
+  svg.appendChild(svgEl("circle", {
+    cx: CX, cy: CY, r: R_INNER, fill: "none",
+    stroke: "var(--ink-3)", "stroke-width": 1.5,
+  }));
+  // 라벨은 좌측 반원(135°/180° 방향)에 둔다 — 우주선 황경이 78·254·290·291·293°
+  // 이므로 그 방향들과 부딪히지 않는 유일하게 빈 구역이다.
+  const brkA = (135 * Math.PI) / 180;
+  const brk = svgEl("text", {
+    x: CX + (R_INNER + 8) * Math.cos(brkA), y: CY - (R_INNER + 8) * Math.sin(brkA),
+    "text-anchor": "end", class: "lbl-sm",
+  });
+  brk.textContent = `${BREAK_AU} AU — 이 밖은 로그 압축 스케일`;
+  svg.appendChild(brk);
+
+  // --- 태양권계면 (보이저 1 통과 지점) ---------------------------------
+  const rHelio = radiusPx(d.interstellar.radius_au);
+  svg.appendChild(svgEl("circle", {
+    cx: CX, cy: CY, r: rHelio, fill: "none", stroke: "var(--axis)",
+    "stroke-width": 1, "stroke-dasharray": "1 8", opacity: .6,
+  }));
+  const hl = svgEl("text", { x: CX - rHelio + 8, y: CY - 7, "text-anchor": "start", class: "lbl-sm" });
+  hl.textContent = `태양권계면 약 ${d.interstellar.radius_au} AU`;
+  const hl2 = svgEl("text", { x: CX - rHelio + 8, y: CY + 6, "text-anchor": "start", class: "lbl-sm" });
+  hl2.textContent = `${d.interstellar.milestone[0]} ${d.interstellar.milestone[1]}`;
+  svg.appendChild(hl2);
+  svg.appendChild(hl);
+
+  // --- 탈출 항적: 태양에서 각 방향으로 뻗는 점선 ray ---------------------
+  for (const s of d.spacecraft.escaping) {
+    const lon = (s.lon_deg * Math.PI) / 180;
+    svg.appendChild(svgEl("line", {
+      x1: CX + R_INNER * 0.06 * Math.cos(lon), y1: CY - R_INNER * 0.06 * Math.sin(lon),
+      x2: CX + R_OUTER * Math.cos(lon), y2: CY - R_OUTER * Math.sin(lon),
+      stroke: SC_COLOR, "stroke-width": 1, "stroke-dasharray": "1 7", opacity: .22,
+    }));
+  }
+
+  // --- 궤도 (그리드 성격 — 물러나 있다) --------------------------------
+  for (const b of d.bodies) {
+    const pts = b.orbit_path.map((p) => proj(p[0], p[1]).join(",")).join(" ");
+    svg.appendChild(svgEl("polygon", { points: pts, class: "orbit" + (b.is_dwarf ? " dwarf" : "") }));
+  }
+
+  // --- 순항 항적: 발사점 → 도착점 (양 끝은 실제 계산 위치) --------------
+  for (const s of d.spacecraft.cruising) {
+    const [x1, y1] = proj(s.from_xy[0], s.from_xy[1]);
+    const [x2, y2] = proj(s.to_xy[0], s.to_xy[1]);
+    svg.appendChild(svgEl("line", {
+      x1, y1, x2, y2, stroke: SC_COLOR, "stroke-width": 1.2, opacity: .45,
+    }));
+    svg.appendChild(svgEl("circle", { cx: x2, cy: y2, r: 2.2, fill: SC_COLOR, opacity: .7 }));
+  }
+
+  // --- 행성 잔상 트레일 (등시간 경로의 부산물이라 추가 계산 0) -----------
+  for (const b of d.bodies) {
+    REG.bodies[b.key] = {
+      data: b,
+      labelAbove: d.bodies.indexOf(b) % 2 === 0,
+      trail: svg.appendChild(svgEl("polyline", {
+        points: "", fill: "none", stroke: tierColor(b.reach.tier),
+        "stroke-width": 2.5, "stroke-linecap": "round", opacity: .5,
+      })),
+    };
+  }
+
+  // --- 태양 ------------------------------------------------------------
+  svg.appendChild(svgEl("circle", { cx: CX, cy: CY, r: 34, fill: "url(#sunGlow)" }));
+  svg.appendChild(svgEl("circle", { cx: CX, cy: CY, r: 10, fill: "var(--sun)", class: "mark" }));
+
+  // --- 달 --------------------------------------------------------------
+  if (d.moon) {
+    const dot = svg.appendChild(svgEl("circle", { cx: CX, cy: CY, r: 3.4, fill: tierColor(d.moon.reach.tier), class: "mark" }));
+    const hit = svg.appendChild(svgEl("circle", { cx: CX, cy: CY, r: 11, class: "hit" }));
+    bindTip(hit, tipHtml(d.moon.name_ko, `도달등급 ${d.moon.reach.tier} · ${d.moon.reach.label}`,
+      "지구 궤도상 · 표시 위치는 개념적 오프셋(실거리 0.0026 AU)", d.moon.reach.milestones));
+    REG.moon = { dot, hit, data: d.moon };
+  }
+
+  // --- 행성 마크 · 라벨 · 등급 배지 · 히트 타깃 --------------------------
+  for (const b of d.bodies) {
+    const reg = REG.bodies[b.key];
+    const r = bodyR(b.radius_km);
+    reg.r = r;
+    reg.dot = svg.appendChild(svgEl("circle", { cx: CX, cy: CY, r, fill: tierColor(b.reach.tier), class: "mark" }));
+    reg.label = svg.appendChild(svgEl("text", { x: CX, y: CY, "text-anchor": "middle", class: "lbl" }));
+    reg.label.textContent = b.name_ko;
+    reg.badge = svgEl("text", { x: CX, y: CY, "text-anchor": "middle", class: "lbl-sm" });
+    reg.badge.textContent = b.reach.tier;
+    svg.appendChild(reg.badge);
+    reg.hit = svg.appendChild(svgEl("circle", { cx: CX, cy: CY, r: Math.max(15, r + 9), class: "hit" }));
+    bindTip(reg.hit, tipHtml(
+      `${b.name_ko} (${b.name})`,
+      `도달등급 ${b.reach.tier} · ${b.reach.label}`,
+      `반장축 ${fmt(b.a_au, 3)} AU · 이심률 ${fmt(b.e, 4)} · 공전주기 ${fmt(b.period_days / 365.25, 2)}년`,
+      b.reach.milestones));
+  }
+
+  // --- L2 상주 관측소 ---------------------------------------------------
+  for (const s of d.spacecraft.stationed) {
+    const dot = svg.appendChild(svgEl("rect", { x: CX, y: CY, width: 6, height: 6, fill: SC_COLOR, class: "mark" }));
+    const label = svg.appendChild(svgEl("text", { x: CX, y: CY, class: "lbl-sm" }));
+    label.textContent = s.short;
+    const hit = svg.appendChild(svgEl("circle", { cx: CX, cy: CY, r: 12, class: "hit" }));
+    bindTip(hit, `<div class="t">${esc(s.name_ko)}</div><div class="r">${esc(s.short)}</div>` +
+      `<div class="m">${esc(s.note)}</div>`);
+    REG.stationed[s.key] = { dot, label, hit, data: s };
+  }
+
+  // --- 탈출 항적 마커 ---------------------------------------------------
+  for (const s of d.spacecraft.escaping) {
+    const alive = s.status.includes("운용");
+    const dot = svg.appendChild(svgEl("circle", {
+      cx: CX, cy: CY, r: alive ? 5 : 3.6,
+      fill: alive ? SC_COLOR : "none", stroke: SC_COLOR, "stroke-width": 2,
+    }));
+    const label = svg.appendChild(svgEl("text", { x: CX, y: CY, class: "lbl-sm" }));
+    const hit = svg.appendChild(svgEl("circle", { cx: CX, cy: CY, r: 13, class: "hit" }));
+    REG.escaping[s.key] = { dot, label, hit, data: s, alive };
+  }
+
+  // --- 순항 미션 마커 ---------------------------------------------------
+  // 지도에는 번호만 찍고 이름은 좌측 요약 목록의 같은 번호가 나른다.
+  // 이름 라벨 4개를 지도에 두면 내행성 라벨과 정면 충돌한다.
+  d.spacecraft.cruising.forEach((s, i) => {
+    const dot = svg.appendChild(svgEl("circle", { cx: CX, cy: CY, r: 7, fill: SC_COLOR, class: "mark" }));
+    const label = svg.appendChild(svgEl("text", { x: CX, y: CY, "text-anchor": "middle", class: "sc-num" }));
+    label.textContent = String(i + 1);
+    const hit = svg.appendChild(svgEl("circle", { cx: CX, cy: CY, r: 13, class: "hit" }));
+    REG.cruising[s.key] = { dot, label, hit, data: s, num: i + 1 };
+  });
+
+  drawSolarInset(d);
+  drawReachSummary(d);
+  drawSolarLegend(d);
+  $("solar-note").textContent = `${d.note}\n${d.spacecraft.note}\n도표 생략: ${d.spacecraft.omitted}`;
+  REG.built = true;
+  updateSolar();
+}
+
+// ---------------------------------------------------------------------------
+// 프레임 갱신 — 좌표 속성만 고친다
+// ---------------------------------------------------------------------------
+function updateSolar() {
+  if (!REG.built) return;
+  const d = S.solar, ms = animMs();
+  const elapsedDays = (ms - d.epoch_ms) / DAY_MS;
+  const n = d.orbit_samples;
+  let earthXY = null;
+  const liveXY = {};   // 천체별 현재 좌표 — 순항 마커가 양 끝에서 여기에 붙는다
+
+  // --- 행성: 등시간 경로 인덱스를 전진시킨다 ---------------------------
+  // orbit_path 가 평균근점이각 균등 샘플링이므로 인덱스를 일정 속도로 전진시키면
+  // 근일점에서 빨라지고 원일점에서 느려지는 케플러 제2법칙이 자동 성립한다.
+  for (const key in REG.bodies) {
+    const reg = REG.bodies[key], b = reg.data;
+    let f = (b.phase + elapsedDays / b.period_days) % 1;
+    if (f < 0) f += 1;
+    const idx = f * n, i0 = Math.floor(idx), frac = idx - i0;
+    const p0 = b.orbit_path[i0 % n], p1 = b.orbit_path[(i0 + 1) % n];
+    const xa = p0[0] + (p1[0] - p0[0]) * frac;
+    const ya = p0[1] + (p1[1] - p0[1]) * frac;
+    const [x, y] = proj(xa, ya);
+    liveXY[key] = [xa, ya];
+    if (key === "earth") earthXY = { xa, ya, r: Math.hypot(xa, ya) };
+
+    reg.dot.setAttribute("cx", x); reg.dot.setAttribute("cy", y);
+    reg.hit.setAttribute("cx", x); reg.hit.setAttribute("cy", y);
+    const above = reg.labelAbove;
+    reg.label.setAttribute("x", x); reg.label.setAttribute("y", above ? y - reg.r - 7 : y + reg.r + 14);
+    reg.badge.setAttribute("x", x); reg.badge.setAttribute("y", above ? y - reg.r - 18 : y + reg.r + 25);
+
+    // 잔상: 방금 지나온 경로 구간
+    const pts = [];
+    for (let k = TRAIL_STEPS; k >= 1; k--) {
+      const p = b.orbit_path[((i0 - k) % n + n) % n];
+      pts.push(proj(p[0], p[1]).join(","));
+    }
+    pts.push(`${x},${y}`);
+    reg.trail.setAttribute("points", pts.join(" "));
+
+    const ins = REG.inset && REG.inset[key];
+    if (ins) {
+      const [ix, iy] = projInner(xa, ya);
+      ins.dot.setAttribute("cx", ix); ins.dot.setAttribute("cy", iy);
+      ins.lbl.setAttribute("x", ix);
+      ins.lbl.setAttribute("y", ins.above ? iy - ins.r - 6 : iy + ins.r + 12);
+    }
+  }
+
+  // --- 달 · L2: 지구 위치에서 파생된다 ---------------------------------
+  if (REG.moon && earthXY) {
+    const u = earthXY.r || 1;
+    const [x, y] = proj(earthXY.xa * (1 + 0.055 / u), earthXY.ya * (1 + 0.055 / u));
+    REG.moon.dot.setAttribute("cx", x); REG.moon.dot.setAttribute("cy", y);
+    REG.moon.hit.setAttribute("cx", x); REG.moon.hit.setAttribute("cy", y);
+  }
+  for (const key in REG.stationed) {
+    const reg = REG.stationed[key];
+    if (!earthXY) break;
+    const u = earthXY.r || 1, k = (u + reg.data.offset_au) / u;
+    const [x, y] = proj(earthXY.xa * k, earthXY.ya * k);
+    reg.dot.setAttribute("x", x - 3); reg.dot.setAttribute("y", y - 3);
+    reg.label.setAttribute("x", x + 8); reg.label.setAttribute("y", y + 3);
+    reg.hit.setAttribute("cx", x); reg.hit.setAttribute("cy", y);
+  }
+
+  // --- 탈출 항적: 거리는 시간의 1차 함수 -------------------------------
+  for (const key in REG.escaping) {
+    const reg = REG.escaping[key], s = reg.data;
+    const years = (ms - Date.parse(s.epoch + "T00:00:00Z")) / (365.25 * DAY_MS);
+    const dist = s.epoch_distance_au + s.speed_au_per_year * years;
+    const lon = (s.lon_deg * Math.PI) / 180;
+    const [x, y] = proj(dist * Math.cos(lon), dist * Math.sin(lon));
+    const clamped = dist > OUTER_MAX_AU;
+    reg.liveDistance = dist;
+    reg.dot.setAttribute("cx", x); reg.dot.setAttribute("cy", y);
+    reg.hit.setAttribute("cx", x); reg.hit.setAttribute("cy", y);
+    const right = Math.cos(lon) >= 0;
+    reg.label.setAttribute("x", x + (right ? 9 : -9));
+    reg.label.setAttribute("text-anchor", right ? "start" : "end");
+    reg.labelY = y + 3;   // 잠정값. 아래 군집 분리 패스가 확정한다.
+    reg.label.textContent = `${s.name_ko} ${fmt(dist, 1)} AU${clamped ? " ⇢" : ""}`;
+    bindTip(reg.hit, `<div class="t">${esc(s.name_ko)} (${esc(s.name)})</div>` +
+      `<div class="r">${esc(s.status)} · 태양거리 ${fmt(dist, 1)} AU</div>` +
+      `<div class="m">${s.speed_au_per_year} AU/년 · 황경 ${s.lon_deg}° · 황위 ${s.lat_deg}°(투영에서 버림)<br>` +
+      `${s.milestone[0]} ${esc(s.milestone[1])}</div>` +
+      (clamped ? `<div class="m">스케일 상한 ${OUTER_MAX_AU} AU 를 넘어 경계에 고정됨</div>` : ""));
+  }
+
+  // --- 순항 미션: 경과율로 두 실제 좌표를 보간 --------------------------
+  // 1차 패스: 경과율을 구하고 도착한 미션을 목표 천체별로 묶는다.
+  // 목성행 3기(루시·유로파 클리퍼·주스)는 도착 후 모두 목성의 현재 위치로
+  // 스냅되므로 한 점에 완전히 겹친다 → 태양 기준으로 회전시켜 부채꼴로 벌린다.
+  const arrivedByTarget = {};
+  for (const key in REG.cruising) {
+    const reg = REG.cruising[key], s = reg.data;
+    const l0 = Date.parse(s.launch + "T00:00:00Z"), a0 = Date.parse(s.arrival + "T00:00:00Z");
+    reg.liveProgress = Math.max(0, Math.min(1, (ms - l0) / (a0 - l0)));
+    if (reg.liveProgress >= 1) {
+      (arrivedByTarget[s.target] = arrivedByTarget[s.target] || []).push(reg);
+    }
+  }
+
+  for (const key in REG.cruising) {
+    const reg = REG.cruising[key], s = reg.data;
+    const p = reg.liveProgress;
+    // 발사 전이면 출발 천체에, 도착 후면 목표 천체의 '현재' 위치에 붙인다.
+    // 도착 예정일의 좌표에 그대로 두면 그 사이 행성이 이동해 마커가 허공에 남는다.
+    let xa, ya;
+    if (p >= 1 && liveXY[s.target]) {
+      const grp = arrivedByTarget[s.target];
+      const spread = ((grp.indexOf(reg) - (grp.length - 1) / 2) * 8 * Math.PI) / 180;
+      const [tx, ty] = liveXY[s.target];
+      const c = Math.cos(spread), sn = Math.sin(spread);
+      xa = tx * c - ty * sn;   // 목표 천체의 궤도 반경을 유지한 채 각도만 벌린다
+      ya = tx * sn + ty * c;
+    }
+    else if (p <= 0 && liveXY[s.origin]) { [xa, ya] = liveXY[s.origin]; }
+    else {
+      xa = s.from_xy[0] + (s.to_xy[0] - s.from_xy[0]) * p;
+      ya = s.from_xy[1] + (s.to_xy[1] - s.from_xy[1]) * p;
+    }
+    const [x, y] = proj(xa, ya);
+    reg.dot.setAttribute("cx", x); reg.dot.setAttribute("cy", y);
+    reg.hit.setAttribute("cx", x); reg.hit.setAttribute("cy", y);
+    reg.label.setAttribute("x", x); reg.label.setAttribute("y", y + 3.4);
+    bindTip(reg.hit, `<div class="t">${reg.num}. ${esc(s.name_ko)} (${esc(s.name)})</div>` +
+      `<div class="r">${esc(s.origin_ko)} → ${esc(s.target_ko)} · ${esc(s.agency)}</div>` +
+      `<div class="m">${esc(s.launch)} 발사 → ${esc(s.arrival)} 도착 ${p >= 1 ? "완료" : "예정"}<br>` +
+      `경과율 ${fmt(p * 100, 1)}%<br>${esc(s.note)}</div>` +
+      `<div class="m">${p >= 1
+        ? `도착 후이므로 마커를 ${esc(s.target_ko)}의 현재 위치에 붙였다` +
+          `${(arrivedByTarget[s.target] || []).length > 1 ? " (같은 목표에 도착한 미션이 여럿이라 부채꼴로 벌려 표시)" : ""}.`
+        : "진행률 표시이며 실제 궤적이 아니다 — 실제 항로는 중력도움을 쓰는 나선이다."}</div>`);
+  }
+
+  deconflictEscapeLabels();
+  // 요약 목록은 문자열 조립 + HTML 파싱이라 프레임마다 쓸 이유가 없다. 8Hz 로 제한한다.
+  const nowPerf = performance.now();
+  if (nowPerf - SUMMARY_LAST > 125) { SUMMARY_LAST = nowPerf; updateSpacecraftSummary(); }
+
+  const date = new Date(ms);
+  $("solar-date").textContent = date.toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul", dateStyle: "long" });
+  const off = Math.round(TIME.offsetDays);
+  $("solar-offset").textContent = off === 0 ? "현재" : `${off > 0 ? "+" : ""}${fmt(off / 365.25, 1)}년`;
+}
+
+/** 탈출 항적 라벨의 수직 겹침을 푼다.
+ *
+ *  보이저 2·파이어니어 11·뉴호라이즌스는 황경이 290·291·293° 로 사실상 같은
+ *  방향이다(실제 황위는 -59°·+17°·-2° 로 크게 다르지만 황도면 투영이 그 차이를
+ *  접는다). 좌/우 반원별로 y 순 정렬 후 최소 간격을 강제하면 몇 기가 뭉쳐도 통한다.
+ */
+const LABEL_MIN_GAP = 13;
+function deconflictEscapeLabels() {
+  for (const side of [true, false]) {
+    const group = Object.values(REG.escaping)
+      .filter((r) => (Math.cos((r.data.lon_deg * Math.PI) / 180) >= 0) === side)
+      .sort((a, b) => a.labelY - b.labelY);
+    let prev = -Infinity;
+    for (const r of group) {
+      const y = Math.max(r.labelY, prev + LABEL_MIN_GAP);
+      r.label.setAttribute("y", y);
+      prev = y;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 재생 컨트롤
+// ---------------------------------------------------------------------------
+function frame(ts) {
+  if (!TIME.playing) return;
+  if (!TIME.last) TIME.last = ts;
+  const dt = Math.min(0.1, (ts - TIME.last) / 1000);   // 탭 전환 후 큰 점프 방지
+  TIME.last = ts;
+  TIME.offsetDays += dt * TIME.rate;
+  if (TIME.offsetDays > SCRUB_MAX) TIME.offsetDays = -SCRUB_MAX;   // 순환 재생
+  $("scrub").value = Math.round(TIME.offsetDays);
+  updateSolar();
+  TIME.raf = requestAnimationFrame(frame);
+}
+
+function setPlaying(on) {
+  TIME.playing = on;
+  TIME.last = 0;
+  const btn = $("play-btn");
+  btn.textContent = on ? "⏸ 일시정지" : "▶ 재생";
+  btn.setAttribute("aria-pressed", String(on));
+  if (on) TIME.raf = requestAnimationFrame(frame);
+  else cancelAnimationFrame(TIME.raf);
+}
+
+function initSolarControls() {
+  // ?t=<일수> 로 시점을 딥링크할 수 있다(스크린샷·공유용). ?theme= 과 같은 성격.
+  const t0 = parseFloat(new URLSearchParams(location.search).get("t") || "0");
+  if (Number.isFinite(t0)) TIME.offsetDays = Math.max(-SCRUB_MAX, Math.min(SCRUB_MAX, t0));
+
+  $("rate-sel").innerHTML = RATES.map(([v, t], i) =>
+    `<option value="${v}"${v === TIME.rate ? " selected" : ""}>${t}</option>`).join("");
+  $("rate-sel").onchange = (e) => { TIME.rate = +e.target.value; };
+  $("scrub").min = -SCRUB_MAX; $("scrub").max = SCRUB_MAX;
+  $("scrub").value = Math.round(TIME.offsetDays);
+  $("scrub").oninput = (e) => { TIME.offsetDays = +e.target.value; updateSolar(); };
+  $("play-btn").onclick = () => setPlaying(!TIME.playing);
+  $("reset-btn").onclick = () => {
+    TIME.offsetDays = 0; $("scrub").value = 0; updateSolar();
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 범례 · 인셋 · 도달 요약
+// ---------------------------------------------------------------------------
+function drawSolarLegend(d) {
+  const labels = d.tier_labels;
+  $("solar-legend").innerHTML =
+    `<span class="item" style="color:var(--ink-2)">인류 도달등급</span>` +
+    `<span class="ramp">` +
+    [0, 1, 2, 3, 4].map((t) => `<span class="step" style="background:var(--t${t})"></span>`).join("") +
+    `</span>` +
+    [0, 1, 2, 3, 4].map((t) => `<span class="item dim">${t} ${labels[t]}</span>`).join("") +
+    `<span class="item" style="margin-left:6px"><span class="swatch" style="background:var(--s2)"></span>인공물(우주선)</span>`;
+
+  $("solar-sub").textContent =
+    `천체 ${d.bodies.length}개 + 달 · 우주선 ` +
+    `${d.spacecraft.escaping.length + d.spacecraft.cruising.length + d.spacecraft.stationed.length}기 · ` +
+    `원 크기는 실제 반지름(로그 스케일), 색과 숫자는 인류 도달 등급`;
+}
+
+/** 내행성계 확대도 — 금성(0.723 AU)과 지구(1.0 AU)는 어떤 단조 스케일로도
+ *  본체 뷰에서 붙는다. 축을 끊는 대신 선형 스케일 별도 뷰로 분리한다. */
+function drawSolarInset(d) {
+  const svg = $("solar-inset");
+  svg.textContent = "";
+  const inner = d.bodies.filter((b) => INNER_KEYS.has(b.key));
+
+  const title = svgEl("text", { x: IN_CX, y: 14, "text-anchor": "middle", class: "lbl-sm" });
+  title.textContent = `내행성계 확대 · 선형 0~${IN_MAX_AU} AU`;
+  svg.appendChild(title);
+
+  for (const b of inner) {
+    const pts = b.orbit_path.map((p) => projInner(p[0], p[1]).join(",")).join(" ");
+    svg.appendChild(svgEl("polygon", { points: pts, class: "orbit" }));
+  }
+  svg.appendChild(svgEl("circle", { cx: IN_CX, cy: IN_CY, r: 5, fill: "var(--sun)", class: "mark" }));
+
+  REG.inset = {};
+  inner.forEach((b, i) => {
+    const r = Math.max(3.6, bodyR(b.radius_km) * 0.85);
+    const dot = svg.appendChild(svgEl("circle", { cx: IN_CX, cy: IN_CY, r, fill: tierColor(b.reach.tier), class: "mark" }));
+    const lbl = svg.appendChild(svgEl("text", { x: IN_CX, y: IN_CY, "text-anchor": "middle", class: "lbl" }));
+    lbl.textContent = b.name_ko;
+    REG.inset[b.key] = { dot, lbl, r, above: i % 2 === 0 };
+  });
+  const note = svgEl("text", { x: IN_CX, y: 2 * IN_R + 42, "text-anchor": "middle", class: "lbl-sm" });
+  note.textContent = "재생과 동기 · 선형 스케일";
+  svg.appendChild(note);
+}
+
+/** 등급별로 묶은 천체 목록. 그림을 못 보는 경우에도 "어디까지 갔는가"가 읽힌다. */
+function drawReachSummary(d) {
+  const groups = new Map();
+  const push = (t, label, name) => {
+    if (!groups.has(t)) groups.set(t, { label, names: [] });
+    groups.get(t).names.push(name);
+  };
+  for (const b of d.bodies) push(b.reach.tier, d.tier_labels[b.reach.tier], b.name_ko);
+  if (d.moon) push(d.moon.reach.tier, d.tier_labels[d.moon.reach.tier], d.moon.name_ko);
+
+  const rows = [...groups.entries()].sort((a, b) => b[0] - a[0]).map(([t, g]) =>
+    `<div class="reach-group">
+       <span class="sw" style="background:var(--t${t})"></span>
+       <span><span class="tl">${t} ${esc(g.label)}</span><br><span class="bl">${esc(g.names.join(", "))}</span></span>
+     </div>`).join("");
+
+  $("reach-summary").innerHTML =
+    `<div class="reach-head">도달 요약</div>` + rows +
+    `<div class="reach-group"><span class="sw" style="background:var(--s2)"></span>
+       <span><span class="tl">탈출 중</span><br><span class="bl" id="sum-escaping"></span></span></div>` +
+    `<div class="reach-group"><span class="sw" style="background:var(--s2)"></span>
+       <span><span class="tl">순항 중</span><br><span class="bl" id="sum-cruising"></span></span></div>`;
+}
+
+/** 요약 목록의 우주선 두 줄은 재생 시점에 따라 값이 바뀌므로 프레임마다 다시 쓴다. */
+function updateSpacecraftSummary() {
+  const esc_ = Object.values(REG.escaping)
+    .sort((a, b) => b.liveDistance - a.liveDistance)
+    .map((r) => `${esc(r.data.name_ko)} <span class="dim">${fmt(r.liveDistance, 0)} AU</span>`)
+    .join(", ");
+  const cru = Object.values(REG.cruising)
+    .sort((a, b) => a.num - b.num)
+    .map((r) => `<span class="sc-badge">${r.num}</span>${esc(r.data.name_ko)} ` +
+                `<span class="dim">${Math.round(r.liveProgress * 100)}%</span>`)
+    .join("<br>");
+  const e = $("sum-escaping"), c = $("sum-cruising");
+  if (e) e.innerHTML = esc_;
+  if (c) c.innerHTML = cru;
+}
+
+function tipHtml(title, row, detail, milestones) {
+  const ms = (milestones || []).map((m) => `${m[0]} ${m[1]}`).join("<br>");
+  return `<div class="t">${esc(title)}</div><div class="r">${esc(row)}</div>` +
+         `<div class="m">${esc(detail)}</div>` + (ms ? `<div class="m">${ms}</div>` : "");
+}
+
+// ===========================================================================
+// 지구 저궤도 — 궤도 측면도
+// 지상궤적(위경도)이 아니라 경사각만큼 기울인 타원으로 그린다. ISS 51.6° 와
+// 톈궁 41.5° 가 실제로 구분되고, GMST·좌표변환 코드가 전부 불필요해진다.
+// ===========================================================================
+const LEO_SERIES = ["var(--s3)", "var(--s4)"];
+
+function drawLeo() {
+  const svg = $("leo"), cx = 170, cy = 132, earthR = 44;
+  svg.textContent = "";
+  svg.appendChild(svgEl("circle", { cx, cy, r: earthR, fill: "var(--grid)", stroke: "var(--axis)", "stroke-width": 1 }));
+  const eLbl = svgEl("text", { x: cx, y: cy + 4, "text-anchor": "middle", class: "lbl" });
+  eLbl.textContent = "지구";
+  svg.appendChild(eLbl);
+
+  // 적도면 기준선 — 궤도 기울기를 여기에 대고 읽는다
+  svg.appendChild(svgEl("line", {
+    x1: 12, y1: cy, x2: 328, y2: cy, stroke: "var(--axis)", "stroke-width": 1, "stroke-dasharray": "4 5",
+  }));
+  const eqLbl = svgEl("text", { x: 328, y: cy - 5, "text-anchor": "end", class: "lbl-sm" });
+  eqLbl.textContent = "적도면";
+  svg.appendChild(eqLbl);
+
+  S.leo.stations.forEach((st, i) => {
+    const color = LEO_SERIES[i % LEO_SERIES.length];
+    // 고도를 과장해서 그린다 — 실제 비율(400/6371 = 6%)이면 궤도가 지구에 붙어버린다.
+    // 납작함(VIEW_SQUASH)은 '보는 각도'에서 오는 값이라 모든 궤도에 동일하다.
+    // 경사각은 오직 회전각으로만 표현한다 — cos(경사각)으로 납작하게 만들면서
+    // 동시에 회전시키면 경사각을 두 번 세는 셈이 된다.
+    const VIEW_SQUASH = 0.40;
+    const rx = earthR + 24 + i * 20;
+    const ry = rx * VIEW_SQUASH;
+
+    const g = svgEl("g", { transform: `rotate(${-st.inclination_deg} ${cx} ${cy})` });
+    g.appendChild(svgEl("ellipse", { cx, cy, rx, ry, fill: "none", stroke: color, "stroke-width": 2, opacity: .85 }));
+    const a = (st.true_anomaly_deg * Math.PI) / 180;
+    const px = cx + rx * Math.cos(a), py = cy - ry * Math.sin(a);
+    g.appendChild(svgEl("circle", { cx: px, cy: py, r: 5.5, fill: color, class: "mark" }));
+    svg.appendChild(g);
+
+    // relief 규칙: 라이트 모드에서 이 두 색은 표면 대비 3:1 미만이므로
+    // 이름과 수치를 항상 눈에 보이는 직접 라벨로 표시한다.
+    const ty = 250 + i * 18;
+    const sw = svgEl("rect", { x: 4, y: ty - 8, width: 9, height: 9, rx: 2.5, fill: color });
+    svg.appendChild(sw);
+    const t = svgEl("text", { x: 19, y: ty, class: "lbl" });
+    t.textContent = `${st.short} · ${st.name_ko} — ${fmt(st.altitude_km)}km · ${fmt(st.speed_kmh)}km/h`;
+    svg.appendChild(t);
+
+    const hit = svgEl("rect", { x: 0, y: ty - 12, width: 340, height: 17, class: "hit" });
+    bindTip(hit, `<div class="t">${esc(st.name_ko)}</div>` +
+      `<div class="r">${esc(st.status)} · ${esc(st.orbit)} · ${esc(st.founded)} 개시</div>` +
+      `<div class="m">고도 ${fmt(st.altitude_km, 1)} km · 속도 ${fmt(st.speed_kmh)} km/h<br>` +
+      `주기 ${fmt(st.period_min, 2)} 분 · 경사각 ${fmt(st.inclination_deg, 2)}° · 진근점이각 ${fmt(st.true_anomaly_deg, 1)}°<br>` +
+      `모듈 ${st.module_count}개 · 진행 원정대 ${st.active_expeditions}</div>` +
+      `<div class="m">도킹 중: ${st.docked.length ? esc(st.docked.join(", ")) : "없음"}<br>` +
+      `요소 나이 ${fmt(st.age_hours, 1)}시간</div>` +
+      `<div class="m">${esc(st.owner)}</div>`);
+    svg.appendChild(hit);
+  });
+
+  $("leo-readout").innerHTML = S.leo.stations.map((st) =>
+    `<div style="font-size:12px;color:var(--ink-2);margin-top:6px">
+       <strong style="color:var(--ink-1)">${esc(st.short)}</strong>
+       주기 <span style="font-variant-numeric:tabular-nums">${fmt(st.period_min, 1)}</span>분 ·
+       경사각 <span style="font-variant-numeric:tabular-nums">${fmt(st.inclination_deg, 1)}</span>° ·
+       모듈 ${st.module_count} · 도킹 ${st.docked.length}
+       <div class="dim" style="font-size:11px">${st.docked.length ? esc(st.docked.join(", ")) : "도킹 없음"}</div>
+     </div>`).join("");
+
+  $("leo-sub").textContent = `활성 ${S.leo.station_active}기 / 역대 ${S.leo.station_total}기 · 고도는 과장 표시, 궤도 기울기는 실제 경사각`;
+  $("leo-note").textContent = S.leo.note;
+}
+
+// ===========================================================================
+// 발사사 점유율 막대
+// ===========================================================================
+function drawBars() {
+  const s = S.launches.summary, rows = s.top_providers.slice(0, 8);
+  const max = rows.length ? rows[0].count : 1;
+  $("bars").innerHTML = rows.map((p) => {
+    const color = p.type === "Commercial" ? "var(--s1)" : "var(--s2)";
+    const pct = (100 * p.count) / max;
+    return `<div class="bar-row" data-i="${esc(p.name)}">
+      <div class="bar-name" title="${esc(p.name)}">${esc(p.name)}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct.toFixed(1)}%;background:${color}"></div></div>
+      <div class="bar-val">${p.count}<span class="bar-pct">${fmt((100 * p.count) / (s.count || 1), 0)}%</span></div>
+    </div>`;
+  }).join("") || `<p class="loading">해당 조건의 발사가 없습니다.</p>`;
+
+  rows.forEach((p) => {
+    const el = $("bars").querySelector(`[data-i="${CSS.escape(p.name)}"]`);
+    if (!el) return;
+    const rate = p.count ? (100 * p.success) / p.count : 0;
+    bindTip(el, `<div class="t">${esc(p.name)}</div>` +
+      `<div class="r">${p.type === "Commercial" ? "상업" : p.type === "Government" ? "정부" : esc(p.type)} · ${esc(p.country)}</div>` +
+      `<div class="m">발사 ${p.count}회 · 성공 ${p.success}회 (${fmt(rate, 1)}%)<br>` +
+      `${s.window_days}일 점유율 ${fmt((100 * p.count) / (s.count || 1), 1)}%</div>`);
+  });
+
+  $("chart-sub").textContent =
+    `최근 ${s.window_days}일 · 발사 ${s.count}회 · 주체 ${s.provider_count}개 · 상위 ${rows.length}개 · ` +
+    `막대 길이는 최다 발사사 대비이고 오른쪽 %는 전체 대비 점유율`;
+}
+
+// ===========================================================================
+// 발사 표 (= 접근성 대체 경로)
+// ===========================================================================
+function drawTable() {
+  const d = S.launches, now = Date.now();
+  const upcoming = d.upcoming.map((x) => ({ ...x, _up: true }));
+  const rows = [...upcoming.reverse(), ...d.past].slice(0, 40);
+
+  $("tbl").tBodies[0].innerHTML = rows.map((x) => {
+    let chip;
+    if (x._up) {
+      const dd = Math.max(0, Math.ceil((x.net - now) / 86400000));
+      chip = `<span class="chip soon">◷ 예정 D-${dd}</span>`;
+    } else if (x.status === "Success") {
+      chip = `<span class="chip good">✓ 성공</span>`;
+    } else if (x.status === "Failure" || x.status === "Partial Failure") {
+      chip = `<span class="chip bad">✕ ${esc(x.status_full)}</span>`;
+    } else {
+      chip = `<span class="chip">${esc(x.status)}</span>`;
+    }
+    return `<tr${x._up ? ' style="background:var(--wash)"' : ""}>
+      <td class="num">${kst(x.net)}</td>
+      <td>${esc(x.rocket)}</td>
+      <td>${esc(x.provider)}</td>
+      <td>${esc(x.mission)}</td>
+      <td class="dim">${esc(x.orbit)}</td>
+      <td class="dim">${esc(x.pad_location)}</td>
+      <td>${chip}</td>
+    </tr>`;
+  }).join("");
+
+  $("table-sub").textContent =
+    `예정 ${d.upcoming.length}건 + 최근 ${d.past.length}건 중 ${rows.length}건 표시 · 시각은 KST`;
+}
+
+function drawFooter() {
+  const s = S.launches.summary;
+  $("footer-note").textContent =
+    `데이터: The Space Devs Launch Library 2 (발사·정거장) · CelesTrak GP (궤도요소) · 행성 위치는 J2000 평균요소 계산값 · ` +
+    `도달 마일스톤은 큐레이션 데이터 · 마지막 수집 ${kstFull(s.last_collected_at ? s.last_collected_at * 1000 : 0)} · ` +
+    `발사 통계는 최근 ${S.launches.max_window_days}일 100발 표본 기준(LL2 익명 한도)`;
+}
+
+// ===========================================================================
+// 컨트롤
+// ===========================================================================
+$("days").oninput = (e) => { $("days-out").textContent = e.target.value + "일"; };
+$("days").onchange = (e) => { S.days = +e.target.value; load(); };
+$("commercial").onchange = (e) => { S.commercial = e.target.checked; load(); };
+
+// ===========================================================================
+// 브리핑
+// ===========================================================================
+$("brief-btn").onclick = async () => {
+  const btn = $("brief-btn"), box = $("brief-box");
+  btn.disabled = true;
+  box.innerHTML = `<p class="loading">Bedrock 호출 중…</p>`;
+  try {
+    const res = await fetch("/api/brief", { method: "POST" });
+    const body = await res.json();
+    if (!res.ok) {
+      box.innerHTML = `<p class="err">브리핑 실패 (HTTP ${res.status}): ${esc(body.detail || JSON.stringify(body))}</p>`;
+    } else {
+      box.innerHTML = `<p id="brief-text">${esc(body.brief)}</p>
+        <p class="note">${body.cached ? "10분 캐시된 결과" : "새로 생성"} · 버킷 ${body.bucket} · ${kstFull(body.generated_at * 1000)}</p>`;
+    }
+  } catch (err) {
+    box.innerHTML = `<p class="err">브리핑 요청 오류: ${esc(String(err))}</p>`;
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+// ===========================================================================
+function esc(v) {
+  return String(v ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+load().catch((e) => {
+  $("solar-sub").innerHTML = `<span class="err">데이터 로드 실패: ${esc(String(e))}</span>`;
+});
+// 서버 스냅샷은 20분마다 갱신되지만 행성·위성 위치는 요청마다 재계산되므로
+// 60초 폴링만으로도 점이 실제로 움직인다 (LEO 주기 92분 → 60초당 3.9°).
+setInterval(() => { if (!TIME.playing) load().catch(() => {}); }, 60000);
+</script>
+</body>
+</html>

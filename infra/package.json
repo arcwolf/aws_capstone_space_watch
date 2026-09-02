@@ -1,0 +1,22 @@
+{
+  "name": "space-watch-infra",
+  "version": "1.0.0",
+  "private": true,
+  "bin": {
+    "space-watch": "bin/space-watch.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "synth": "SW_ORIGIN_VERIFY=$(cat .origin-verify) npx cdk synth",
+    "deploy": "SW_ORIGIN_VERIFY=$(cat .origin-verify) npx cdk deploy --require-approval never"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "ts-node": "^10.9.2",
+    "typescript": "~5.7.2"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.174.0",
+    "constructs": "^10.4.2"
+  }
+}

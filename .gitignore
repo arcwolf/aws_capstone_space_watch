@@ -1,0 +1,22 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# CDK / Node
+infra/node_modules/
+infra/cdk.out/
+
+# 세션 도구 상태 (대화 기록이 들어갈 수 있다)
+.remember/
+
+# 로컬 잡동사니
+.DS_Store
+*.log
+
+# X-Origin-Verify 값 — 버전관리에 두지 않는다. ALB DNS 와 함께 공개되면
+# 누구나 자기 CloudFront 배포로 그 방어층을 통과할 수 있다.
+infra/.origin-verify
+
+# CDK 환경 조회 캐시 — AZ 조회 키에 계정 ID 가 박힌다. 자격증명만 있으면 재생성된다.
+infra/cdk.context.json
